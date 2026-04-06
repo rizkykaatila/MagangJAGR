@@ -1,0 +1,81 @@
+from PIL import Image
+import os
+import zipfile
+from google.colab import files
+
+# === SETUP ===
+input_folder = "/content/input_images"
+output_folder = "/content/output_images"
+
+os.makedirs(input_folder, exist_ok=True)
+os.makedirs(output_folder, exist_ok=True)
+
+# === UPLOAD FILE ===
+print("Upload file (bisa multiple / folder zip)")
+uploaded = files.upload()
+
+# simpan file
+for name in uploaded.keys():
+    with open(os.path.join(input_folder, name), "wb") as f:
+        f.write(uploaded[name])
+
+# === PROCESSING ===
+processed_files = []
+
+for file in os.listdir(input_folder):
+    if file.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+        try:
+            img_path = os.path.join(input_folder, file)
+            img = Image.open(img_path)
+
+            # transparansi → putih
+            if img.mode in ("RGBA", "LA"):
+                bg = Image.new("RGB", img.size, (255, 255, 255))
+                bg.paste(img, mask=img.split()[3])
+                img = bg
+            else:
+                img = img.convert("RGB")
+
+            # resize
+            img = img.resize((200, 200))
+
+            # nama output
+            new_name = os.path.splitext(file)[0] + ".jpg"
+            save_path = os.path.join(output_folder, new_name)
+
+            # compress ≤ 50KB
+            quality = 90
+            while True:
+                img.save(save_path, "JPEG", quality=quality, optimize=True)
+                size_kb = os.path.getsize(save_path) / 1024
+
+                if size_kb <= 50 or quality <= 10:
+                    break
+                quality -= 5
+
+            processed_files.append(save_path)
+            print(f"✅ {new_name} → {size_kb:.2f} KB")
+
+        except Exception as e:
+            print(f"❌ Error {file}: {e}")
+
+# === DOWNLOAD LOGIC ===
+print("\n=== DOWNLOAD ===")
+
+if len(processed_files) == 1:
+    # langsung download file
+    print("⬇️ Download single file")
+    files.download(processed_files[0])
+
+elif len(processed_files) > 1:
+    # zip jika lebih dari 1
+    zip_path = "/content/hasil_images.zip"
+    with zipfile.ZipFile(zip_path, 'w') as zipf:
+        for f in processed_files:
+            zipf.write(f, os.path.basename(f))
+
+    print("⬇️ Download ZIP (karena multiple files)")
+    files.download(zip_path)
+
+else:
+    print("❌ Tidak ada file yang berhasil diproses")
